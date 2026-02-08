@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sharpgate"
+version = "1.0.0"
+description = "AD delegation abuse mapper and attack path analysis tool"
+requires-python = ">=3.9"
+dependencies = [
+    "ldap3>=2.9",
+    "impacket>=0.11",
+    "rich>=13.0",
+    "click>=8.1",
+]
+
+[project.scripts]
+sharpgate = "sharpgate.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sharpgate*"]
