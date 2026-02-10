@@ -107,16 +107,20 @@ def enumerate_not_delegated(conn: LDAPConnection) -> list[ProtectedAccount]:
 def _get_str(entry, attr: str) -> str:
     try:
         val = entry[attr]
+        if hasattr(val, "value"):
+            val = val.value
         return str(val) if val else ""
-    except (KeyError, IndexError):
+    except (KeyError, IndexError, TypeError):
         return ""
 
 
 def _get_int(entry, attr: str) -> int:
     try:
         val = entry[attr]
+        if hasattr(val, "value"):
+            val = val.value
         return int(val) if val else 0
-    except (KeyError, IndexError, ValueError):
+    except (KeyError, IndexError, ValueError, TypeError):
         return 0
 
 
@@ -124,9 +128,9 @@ def _get_list(entry, attr: str) -> list[str]:
     try:
         val = entry[attr]
         if hasattr(val, "values"):
-            return list(val.values)
+            return [str(v) for v in val.values]
         if isinstance(val, list):
             return [str(v) for v in val]
         return [str(val)] if val else []
-    except (KeyError, IndexError):
+    except (KeyError, IndexError, TypeError):
         return []
