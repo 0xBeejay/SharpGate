@@ -45,6 +45,7 @@ from sharpgate.output.console import SharpGateOutput
 @click.option("--include-dcs", is_flag=True, help="Include domain controllers in results")
 @click.option("--no-rbcd", is_flag=True, help="Skip RBCD enumeration")
 @click.option("--no-protected", is_flag=True, help="Skip protected account enumeration")
+@click.option("--brief", is_flag=True, help="Compact output: summary table only, no full commands")
 def main(
     domain: str,
     username: str | None,
@@ -59,6 +60,7 @@ def main(
     include_dcs: bool,
     no_rbcd: bool,
     no_protected: bool,
+    brief: bool,
 ):
     """SharpGate - AD delegation abuse mapper and attack path analysis.
 
@@ -171,6 +173,7 @@ def main(
             toolset=toolset,
             focus_account=account,
             focus_type=deleg_type if deleg_type != "all" else None,
+            brief=brief,
         )
 
     except Exception as e:

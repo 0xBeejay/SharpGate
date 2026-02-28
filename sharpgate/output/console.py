@@ -60,6 +60,7 @@ class SharpGateOutput:
         toolset: str = "all",
         focus_account: str | None = None,
         focus_type: str | None = None,
+        brief: bool = False,
     ):
         """Print the full analysis results.
 
@@ -71,6 +72,7 @@ class SharpGateOutput:
             toolset: "linux", "windows", or "all"
             focus_account: If set, only show this specific account
             focus_type: If set, filter by delegation type
+            brief: If True, show compact summary only (no full commands)
         """
         if not findings:
             self.print_no_findings(domain)
@@ -139,8 +141,11 @@ class SharpGateOutput:
                 self.console.print()
 
         # 4. Detailed panels and commands for each finding
-        for finding in display_findings:
-            self._print_finding_detail(finding, toolset)
+        if brief:
+            self._print_commands_brief(display_findings)
+        else:
+            for finding in display_findings:
+                self._print_finding_detail(finding, toolset)
 
     def _print_finding_detail(self, finding: DelegationFinding, toolset: str):
         """Print detailed analysis for a single finding."""
@@ -189,6 +194,52 @@ class SharpGateOutput:
                         steps=block.steps,
                         platform="windows",
                     ))
+
+    def _print_commands_brief(self, findings: list[DelegationFinding]):
+        """Print compact summary: one table with attack paths, severity, and tools."""
+        from rich.table import Table
+
+        table = Table(
+            title="Attack Paths (Brief)",
+            show_header=True,
+            header_style="bold cyan",
+            border_style="blue",
+            show_lines=True,
+        )
+        table.add_column("Account", style="bold white")
+        table.add_column("Attack Path", style="white")
+        table.add_column("Severity", justify="center")
+        table.add_column("Tools", style="dim")
+
+        for finding in findings:
+            if not finding.attack_paths:
+                continue
+            all_commands = generate_commands(finding, toolset="all")
+            for attack_cmds in all_commands:
+                path = attack_cmds.attack_path
+                sev_color = path.severity.color
+                severity_text = f"[{sev_color}]{path.severity.value}[/{sev_color}]"
+
+                tools: list[str] = []
+                for block in attack_cmds.linux_commands:
+                    tools.append(block.tool_name)
+                for block in attack_cmds.windows_commands:
+                    tools.append(block.tool_name)
+                tools_str = ", ".join(tools) if tools else "[dim]-[/dim]"
+
+                table.add_row(
+                    finding.samaccountname,
+                    path.name,
+                    severity_text,
+                    tools_str,
+                )
+
+        self.console.print(table)
+        self.console.print()
+        self.console.print(
+            "[dim italic]Run without --brief for full attack commands and details.[/dim italic]"
+        )
+        self.console.print()
 
     def print_error(self, message: str):
         """Print an error message."""

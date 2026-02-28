@@ -78,6 +78,7 @@ def _get_linux_commands(key: str, finding: DelegationFinding) -> list[CommandBlo
 
     other_key_map = {
         "unconstrained_coerce": "unconstrained_krbrelayx",
+        "unconstrained_coerce_user": "unconstrained_user_krbrelayx",
         "rbcd_setup": "rbcd_setup_linux",
     }
     other_key = other_key_map.get(key, key)
@@ -105,6 +106,7 @@ def _get_windows_commands(key: str, finding: DelegationFinding) -> list[CommandB
 
     other_key_map = {
         "unconstrained_coerce": "unconstrained_spoolsample",
+        "unconstrained_coerce_user": "unconstrained_user_spoolsample",
         "rbcd_setup": "rbcd_setup_powerview",
     }
     other_key = other_key_map.get(key, key)
@@ -123,6 +125,8 @@ def _tool_name_from_key(key: str) -> str:
     name_map = {
         "unconstrained_krbrelayx": "krbrelayx",
         "unconstrained_spoolsample": "SpoolSample",
+        "unconstrained_user_krbrelayx": "krbrelayx (user account)",
+        "unconstrained_user_spoolsample": "SpoolSample (user account)",
         "rbcd_setup_linux": "rbcd.py / addcomputer.py",
         "rbcd_setup_powerview": "PowerView / StandIn",
     }

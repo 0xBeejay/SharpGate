@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sharpgate.analyser.models import (
+    AccountType,
     AttackPath,
     DelegationFinding,
     DelegationType,
@@ -72,6 +73,32 @@ def _analyse_unconstrained(finding: DelegationFinding):
                 "DCs have TRUSTED_FOR_DELEGATION by default.",
                 "Consider coercing authentication from other DCs to this one.",
             ],
+        ))
+    elif finding.account_type == AccountType.USER:
+        finding.attack_paths.append(AttackPath(
+            name="Unconstrained Delegation - User Account",
+            severity=Severity.CRITICAL,
+            description=(
+                f"{finding.samaccountname} is a USER account with unconstrained "
+                "delegation. TGTs are NOT cached on a user object — you cannot "
+                "run Rubeus monitor or coerce auth TO a user. Instead: identify "
+                "the host where this account's service runs (via its SPNs), "
+                "compromise that host, and extract TGTs from LSASS memory on "
+                "that host. Alternatively, use the account's key with krbrelayx "
+                "to relay coerced authentication."
+            ),
+            prerequisites=[
+                f"Compromise {finding.samaccountname}'s credentials/hash",
+                "Identify the host running this account's service (check SPNs)",
+                "Local admin on the service host OR use krbrelayx with the account's key",
+            ],
+            notes=[
+                "User accounts cannot receive coerced machine auth directly.",
+                "The service host's LSASS holds TGTs for users authenticating to the service.",
+                "krbrelayx.py with the user's AES key can capture delegated TGTs.",
+                "Check SPNs with Get-DomainUser or GetUserSPNs to find the service host.",
+            ],
+            commands_key="unconstrained_coerce_user",
         ))
     else:
         finding.attack_paths.append(AttackPath(
@@ -153,6 +180,15 @@ def _analyse_constrained_t2a4d(
             commands_key="constrained_t2a4d",
         ))
 
+    _add_spn_hostname_warning(finding)
+
+    if finding.account_type == AccountType.USER:
+        finding.attack_paths[-1].notes.append(
+            f"{finding.samaccountname} is a USER account — its hash can be "
+            "Kerberoasted if it has an SPN, or obtained via targeted credential "
+            "attacks. No machine compromise needed to obtain the key."
+        )
+
 
 def _analyse_constrained(
     finding: DelegationFinding,
@@ -204,6 +240,8 @@ def _analyse_constrained(
             ],
             commands_key="constrained_no_t2a4d",
         ))
+
+    _add_spn_hostname_warning(finding)
 
 
 def _analyse_rbcd(finding: DelegationFinding):
@@ -270,3 +308,39 @@ def _check_admin_count(finding: DelegationFinding):
                 "This may indicate Domain Admin, Enterprise Admin, or similar.",
             ],
         ))
+
+
+def _add_spn_hostname_warning(finding: DelegationFinding):
+    """Warn if any allowed SPN uses an FQDN (hostname mismatch can break S4U2Proxy)."""
+    fqdn_spns = [
+        svc for svc in finding.allowed_services
+        if "." in svc.hostname
+    ]
+    if not fqdn_spns:
+        return
+
+    short_spns = [
+        svc for svc in finding.allowed_services
+        if svc.hostname and "." not in svc.hostname
+    ]
+
+    if fqdn_spns and not short_spns:
+        # All SPNs use FQDN — warn about possible short hostname requirement
+        for path in finding.attack_paths:
+            if path.commands_key:
+                path.notes.append(
+                    "SPN hostname mismatch: all SPNs use FQDN. If S4U2Proxy fails "
+                    "with KDC_ERR_BADOPTION or STATUS_MORE_PROCESSING_REQUIRED, "
+                    "try the short hostname (e.g. HOST/SERVER instead of "
+                    "HOST/server.domain.local). The KDC validates the SPN against "
+                    "the target's servicePrincipalName attribute."
+                )
+    elif fqdn_spns and short_spns:
+        for path in finding.attack_paths:
+            if path.commands_key:
+                path.notes.append(
+                    "SPN hostname mismatch: mixed FQDN and short hostnames in "
+                    "allowed SPNs. If S4U2Proxy fails for one format, try the "
+                    "other. The KDC matches the requested SPN against the target's "
+                    "servicePrincipalName attribute."
+                )

